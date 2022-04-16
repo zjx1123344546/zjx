@@ -1,0 +1,288 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>
+      Intro to MapView - Create a 2D map | Sample | ArcGIS API for JavaScript
+      4.23
+    </title>
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+      #measurements {
+        padding: 4px 8px;
+        font-size: 16px;
+        bottom: 15px;
+        left: 50%;
+        margin-right: -50%;
+        transform: translate(-50%,-50%);
+      }
+    </style>
+    
+    
+
+    <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.23/esri/themes/light/main.css"
+    />
+    <script src="https://js.arcgis.com/4.23/"></script>
+
+    <script>
+      require([
+        "esri/Map",
+        "esri/views/MapView",
+        "esri/layers/FeatureLayer",
+        "esri/widgets/Legend",
+        "esri/widgets/LayerList",
+        "esri/widgets/ScaleBar",
+        "esri/widgets/Search",
+        "esri/widgets/BasemapGallery",
+         "esri/widgets/Sketch",
+        "esri/Graphic",
+        "esri/layers/GraphicsLayer",
+        "esri/geometry/geometryEngine",
+         "esri/widgets/Locate",
+         "esri/widgets/Track",
+         "esri/widgets/Expand"
+      ], (
+        Map,
+        MapView,
+        FeatureLayer,
+        Legend,
+        LayerList,
+        ScaleBar,
+        Search,
+        BasemapGallery,
+        Sketch,
+        Graphic,
+        GraphicsLayer,
+        geometryEngine,
+        Locate,
+        Track,
+        Expand
+      ) => {
+        //图层
+        const flayer2 = new FeatureLayer({
+          url: "https://www.geosceneonline.cn/server/rest/services/Hosted/2022年地震/FeatureServer"
+        });
+        const flayer1 = new FeatureLayer({
+          url: "https://www.geosceneonline.cn/server/rest/services/Hosted/各省地震次数/FeatureServer"
+        });
+        const map = new Map({
+          basemap: "topo-vector",
+          layers: [flayer1, flayer2]
+        });
+
+        const view = new MapView({
+          container: "viewDiv",
+          map: map,
+          zoom: 4,
+          center: [115, 29] // longitude, latitude
+        });
+        //追踪
+         const track = new Track({
+          view: view,
+          graphic: new Graphic({
+            symbol: {
+              type: "simple-marker",
+              size: "12px",
+              color: "green",
+              outline: {
+                color: "#efefef",
+                width: "1.5px"
+              }
+            }
+          }),
+          useHeadingEnabled: false
+        });
+        view.ui.add(track, "top-left");
+        const searchWidget = new Search({
+          view: view
+        });
+        // Adds the search widget below other elements in
+        // the top left corner of the view
+        view.ui.add(searchWidget, {
+          position: "top-right",
+          index: 2
+        });
+        //图例
+        let legend = new Legend({
+          view: view
+        });
+        const lgExpand = new Expand({
+          view: view,
+          content: legend,
+          expanded: false
+        });
+        view.ui.add(lgExpand, "top-left");
+        let layerList = new LayerList({
+          view: view
+        });
+
+        const llExpand = new Expand({
+          view: view,
+          content: layerList,
+          expanded: false
+        });
+        view.ui.add(llExpand, "top-left");
+        //比例尺
+        let scaleBar = new ScaleBar({
+          view: view,
+          style: "ruler",
+          unit: "metric"
+        });
+        // Add widget to the bottom left corner of the view
+        view.ui.add(scaleBar, {
+          position: "bottom-left"
+        });
+        const graphicsLayer = new GraphicsLayer();
+        map.add(graphicsLayer);
+        const sketch = new Sketch({
+          layer: graphicsLayer,
+          view: view,
+          availableCreateTools: ["polyline", "polygon", "rectangle"],
+          creationMode: "update",
+          updateOnGraphicClick: true,
+          visibleElements: {
+            createTools: {
+              point: false,
+              circle: false
+            },
+            selectionTools:{
+              "lasso-selection": false,
+              "rectangle-selection":false,
+            },
+            settingsMenu: false,
+            undoRedoMenu: false
+          }
+        });
+        view.ui.add(sketch, "top-right");
+        const measurements = document.getElementById("measurements");
+        view.ui.add(measurements, "manual");
+        const polygon = {
+            type: "polygon",
+            spatialReference: {
+              wkid: 3857,
+            },
+            rings: [
+              [
+                [-4508069.082189632, 3599936.936171892],
+                [-4508069.082189632, 5478453.343307884],
+                [-2629552.6750536393, 5478453.343307884],
+                [-2629552.6750536393, 3599936.936171892],
+                [-4508069.082189632, 3599936.936171892],
+              ],
+            ],
+          };
+
+          const simplePolygonSymbol = {
+            type: "simple-fill",
+            outline: {
+              color: [200, 0, 0],
+              width: 2,
+            },
+          };
+          const polygonGraphic = new Graphic({
+            geometry: polygon,
+            symbol: simplePolygonSymbol
+          });
+
+        graphicsLayer.add(polygonGraphic);
+        view.when(() => {
+          sketch.update(polygonGraphic);
+          getArea(polygonGraphic.geometry);
+        });
+        sketch.on("update", (e) => {
+          const geometry = e.graphics[0].geometry;
+          if (e.state === "start") {
+            switchType(geometry);
+          }
+
+          if (e.state === "complete") {
+            graphicsLayer.remove(graphicsLayer.graphics.getItemAt(0));
+            measurements.innerHTML = null;
+          }
+
+          if (
+            e.toolEventInfo &&
+            (e.toolEventInfo.type === "scale-stop" ||
+              e.toolEventInfo.type === "reshape-stop" ||
+              e.toolEventInfo.type === "move-stop")
+          ) {
+            switchType(geometry);
+          }
+
+        });
+        function getArea(polygon) {
+          const geodesicArea = geometryEngine.geodesicArea(polygon, "square-kilometers");
+          const planarArea = geometryEngine.planarArea(polygon, "square-kilometers");
+           measurements.innerHTML =
+          "<b>Geodesic area</b>:  " + geodesicArea.toFixed(2) + " km\xB2" + " |   <b>Planar area</b>: " + planarArea.toFixed(2) + "  km\xB2";
+
+        }
+        function getLength(line) {
+          const geodesicLength = geometryEngine.geodesicLength(line, "kilometers");
+          const planarLength = geometryEngine.planarLength(line, "kilometers");
+          measurements.innerHTML =
+            "<b>Geodesic length</b>:  " + geodesicLength.toFixed(2) + " km" + " |   <b>Planar length</b>: " + planarLength.toFixed(2) + "  km";
+
+        }
+        function switchType(geom) {
+          switch (geom.type) {
+            case "polygon":
+              getArea(geom);
+              break;
+            case "polyline":
+              getLength(geom);
+              break;
+            default:
+              console.log("No value found");
+          }
+        }
+        //底图库
+        let basemapGallery = new BasemapGallery(
+          {
+            view: view
+          },
+          "basemapGallery"
+        );
+        basemapGallery.startup;
+        // Add widget to the top right corner of the view
+
+        const bgExpand = new Expand({
+          view: view,
+          content: basemapGallery,
+          expanded: false
+        });
+
+        // Add the widget to the top-right corner of the view
+        view.ui.add(bgExpand, "top-left");
+        
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv">
+      <div id="measurements" class="esri-widget"></div>
+      <div class="top">
+      <b>2022年地震</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      <i>2022年1月至4月地震数据</i>
+      <div id="searchdiv"></div>
+      </div>
+      <div id="viewDiv"></div>
+      <div id="other"></div>
+      <div id="final"></div>
+      </div>
+    
+  </body>
+</html>
